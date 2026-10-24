@@ -1,0 +1,46 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ===== 虚拟环境 =====
+.venv/
+venv/
+env/
+
+# ===== 训练 / 推理产物（大文件不进 git）=====
+runs/
+weights/
+*.pt
+*.pth
+*.onnx
+*.rknn
+*.rkllm
+*.nb
+
+# ===== 数据集（大文件不进 git）=====
+datasets/raw/
+data/raw/
+*.zip
+*.tar
+*.tar.gz
+*.mp4
+*.avi
+*.mov
+*.wav
+*.mp3
+
+# ===== 编辑器 / 系统 =====
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# ===== 日志 =====
+*.log
