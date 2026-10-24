@@ -26,6 +26,9 @@ weights/
 # ===== 数据集（大文件不进 git）=====
 datasets/raw/
 data/raw/
+vision/datasets/images/
+vision/datasets/labels/
+vision/datasets/LICENSE
 *.zip
 *.tar
 *.tar.gz
