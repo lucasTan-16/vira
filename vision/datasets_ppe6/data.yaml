@@ -1,0 +1,11 @@
+path: /home/lucas/vira/vision/datasets_ppe6
+train: images/train
+val: images/val
+test: images/test
+names:
+  0: Person
+  1: helmet
+  2: gloves
+  3: vest
+  4: boots
+  5: goggles

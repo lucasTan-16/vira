@@ -26,9 +26,10 @@ weights/
 # ===== 数据集（大文件不进 git）=====
 datasets/raw/
 data/raw/
-vision/datasets/images/
-vision/datasets/labels/
+vision/datasets*/images/
+vision/datasets*/labels/
 vision/datasets/LICENSE
+*.cache
 *.zip
 *.tar
 *.tar.gz
@@ -47,3 +48,4 @@ Thumbs.db
 
 # ===== 日志 =====
 *.log
+wget-log
