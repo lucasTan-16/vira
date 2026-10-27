@@ -49,3 +49,8 @@ Thumbs.db
 # ===== 日志 =====
 *.log
 wget-log
+
+# ===== Week2 临时脚本 / 校准图 / 产物 =====
+tmp/
+vision/rknn/calib/images/
+vision/rknn/out/
