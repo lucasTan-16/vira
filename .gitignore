@@ -54,3 +54,6 @@ wget-log
 tmp/
 vision/rknn/calib/images/
 vision/rknn/out/
+
+# ===== 板端测试样本（生成物，由 make_sample.py 生成，不进 git）=====
+board/sample_640.npy
