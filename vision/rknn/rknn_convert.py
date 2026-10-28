@@ -20,13 +20,16 @@ MEAN = [[0, 0, 0]]
 STD = [[255, 255, 255]]
 
 
-def convert(do_quant: bool, tag: str):
-    out_path = OUT_DIR / f"best_rknnopt_{tag}.rknn"
+def convert(do_quant: bool, tag: str, opt_level: int = 3):
+    # 默认档位 3 用标准名（与板端/文档一致）；实验档位才加 _oN 后缀，避免覆盖标准产物
+    suffix = f"_o{opt_level}" if opt_level != 3 else ""
+    out_path = OUT_DIR / f"best_rknnopt_{tag}{suffix}.rknn"
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     rknn = RKNN(verbose=False)
-    print("--> config")
-    rknn.config(mean_values=MEAN, std_values=STD, target_platform=TARGET)
+    print("--> config (optimization_level=%d)" % opt_level)
+    rknn.config(mean_values=MEAN, std_values=STD, target_platform=TARGET,
+                optimization_level=opt_level)
 
     print("--> load onnx")
     if rknn.load_onnx(model=str(ONNX_MODEL)) != 0:
@@ -50,12 +53,14 @@ def convert(do_quant: bool, tag: str):
 
 def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "i8"
+    opt_level = int(sys.argv[2]) if len(sys.argv) > 2 else 3
     if mode == "fp":
-        convert(False, "fp16")
+        convert(False, "fp16", opt_level)
     elif mode == "i8":
-        convert(True, "int8")
+        convert(True, "int8", opt_level)
     else:
         raise SystemExit("mode must be 'fp' or 'i8'")
+
 
 
 if __name__ == "__main__":
