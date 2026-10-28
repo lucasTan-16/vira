@@ -20,7 +20,7 @@ RULES = {
     "gloves":  (0.30, 0.90),   # 手，身体两侧下部
     "boots":   (0.75, 1.05),   # 脚，底部，可能略超出
 }
-VEST_IOU = 0.30                 # vest 与 Person 的最小 IoU
+VEST_IOU = 0.15                 # vest 与 Person 的最小 IoU
 
 
 # ========== 1. 基础几何：框中心 / 归一化位置 / IoU ==========
