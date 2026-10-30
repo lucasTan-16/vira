@@ -105,8 +105,10 @@ class ToolRegistry:
 import os
 import sys
 import numpy as np
+import cv2
 
 # 让 agent 能 import 板端 board / compliance 模块
+
 HERE = os.path.dirname(os.path.abspath(__file__))   # agent/
 ROOT = os.path.dirname(HERE)                       # agent/ 的上一级 = 工程根
 sys.path.insert(0, os.path.join(ROOT, "board"))
@@ -156,6 +158,31 @@ def _make_summary(results, violations):
         f"人员 {p} 缺失 {', '.join(m)}" for p, m in violations)
     return f"现场共 {n} 人，其中 {v} 人违规。{detail}。"
 
+def _letterbox(img, new_shape=(640, 640), color=(114, 114, 114)):
+    """任意尺寸居中缩放补灰边到 640x640。"""
+    h, w = img.shape[:2]
+    r = min(new_shape[0] / h, new_shape[1] / w)
+    nw, nh = int(round(w * r)), int(round(h * r))
+    img = cv2.resize(img, (nw, nh), interpolation=cv2.INTER_LINEAR)
+    top, left = (new_shape[0] - nh) // 2, (new_shape[1] - nw) // 2
+    canvas = np.full((new_shape[0], new_shape[1], 3), color, np.uint8)
+    canvas[top:top + nh, left:left + nw] = img
+    return canvas
+
+
+def _capture_frame(index=0):
+    """从 USB 摄像头采一帧，letterbox 到 640，返回 RGB uint8。"""
+    cap = cv2.VideoCapture(index)
+    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    ok, frame = cap.read()
+    cap.release()
+    if not ok:
+        raise RuntimeError("camera read failed")
+    frame = _letterbox(frame)
+    return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
 def run_detection(source="image"):
     """
     运行一次检测 + 合规判定，并更新共享状态。
@@ -165,8 +192,9 @@ def run_detection(source="image"):
     if not hasattr(run_detection, "_backend"):
         run_detection._backend = VisionBackend()   # 模型只加载一次
     if source == "camera":
-        return {"error": "camera not wired yet, use source=image"}
-    frame = np.load(SAMPLE)
+        frame = _capture_frame()
+    else:
+        frame = np.load(SAMPLE)
     det = run_detection._backend.detect(frame)
     results, violations = ppe_evaluate(det)
     STATE["last"] = {"results": results, "violations": violations}
