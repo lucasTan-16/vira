@@ -146,7 +146,15 @@ class VisionBackend:
 
 # 共享状态：保存最近一次检测结果，供 query_state 读取
 STATE = {"last": None}
-
+def _make_summary(results, violations):
+    """确定性生成自然语言结论，避免小模型误读数字。"""
+    n = len(results)
+    v = len(violations)
+    if v == 0:
+        return f"现场共 {n} 人，全部穿戴合规，没有违规。"
+    detail = "；".join(
+        f"人员 {p} 缺失 {', '.join(m)}" for p, m in violations)
+    return f"现场共 {n} 人，其中 {v} 人违规。{detail}。"
 
 def run_detection(source="image"):
     """
@@ -166,6 +174,7 @@ def run_detection(source="image"):
         "num_people": len(results),
         "num_violations": len(violations),
         "all_compliant": len(violations) == 0,
+        "summary": _make_summary(results, violations),
         "people": [
             {"id": r["person"], "missing_equipment": r["missing"]}
             for r in results
@@ -191,6 +200,7 @@ def query_state(item="all"):
     if item == "violations":
         return {
             "num_violations": len(violations),
+            "summary": _make_summary(results, violations),
             "violations": [
                 {"person": p, "missing_equipment": m}
                 for p, m in violations
@@ -202,6 +212,7 @@ def query_state(item="all"):
         "num_people": len(results),
         "num_violations": len(violations),
         "all_compliant": len(violations) == 0,
+        "summary": _make_summary(results, violations),
         "people": [
             {"id": r["person"], "missing_equipment": r["missing"]}
             for r in results
