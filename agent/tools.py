@@ -163,15 +163,19 @@ def run_detection(source="image"):
     results, violations = ppe_evaluate(det)
     STATE["last"] = {"results": results, "violations": violations}
     return {
-        "people": len(results),
-        "detections": int(det.shape[0]),
-        "results": [
-            {"person": r["person"], "missing": r["missing"]} for r in results
+        "num_people": len(results),
+        "num_violations": len(violations),
+        "all_compliant": len(violations) == 0,
+        "people": [
+            {"id": r["person"], "missing_equipment": r["missing"]}
+            for r in results
         ],
         "violations": [
-            {"person": p, "missing": m} for p, m in violations
+            {"person": p, "missing_equipment": m}
+            for p, m in violations
         ],
     }
+
 
 
 def query_state(item="all"):
@@ -185,19 +189,29 @@ def query_state(item="all"):
     results = STATE["last"]["results"]
     violations = STATE["last"]["violations"]
     if item == "violations":
-        return {"violations": [
-            {"person": p, "missing": m} for p, m in violations]}
+        return {
+            "num_violations": len(violations),
+            "violations": [
+                {"person": p, "missing_equipment": m}
+                for p, m in violations
+            ],
+        }
     if item == "people":
-        return {"people": len(results)}
+        return {"num_people": len(results)}
     return {
-        "people": len(results),
-        "results": [
-            {"person": r["person"], "missing": r["missing"]} for r in results
+        "num_people": len(results),
+        "num_violations": len(violations),
+        "all_compliant": len(violations) == 0,
+        "people": [
+            {"id": r["person"], "missing_equipment": r["missing"]}
+            for r in results
         ],
         "violations": [
-            {"person": p, "missing": m} for p, m in violations
+            {"person": p, "missing_equipment": m}
+            for p, m in violations
         ],
     }
+
 
 
 def control_device(device, state):
