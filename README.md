@@ -1,4 +1,4 @@
-# 基于RK3588s端侧多模态巡检 Agent — 端侧视觉-推理-行动巡检智能体
+# VIRA — 基于 RK3588s 的端侧多模态巡检 Agent
 
 **Vision → Inference → Reasoning → Action**
 
