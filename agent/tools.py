@@ -255,7 +255,7 @@ def query_state(item="all"):
 
 def control_device(device, state):
     """
-    控制报警/停机设备（Week4 用 libgpiod 接真实 GPIO，这里先模拟）。
+    控制报警/停机设备（后续用 libgpiod 接真实 GPIO，这里先模拟）。
     输入：device（alarm/relay/led）、state（on/off）
     输出：已执行的动作记录
     """

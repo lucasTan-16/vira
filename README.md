@@ -92,8 +92,8 @@ vira/
 
 ## 路线图
 
-- [x] Week 1：6 类 PPE 视觉训练，test mAP50 0.817
-- [x] Week 2：RKNN INT8 量化零掉点，NPU 上板与多核调度
-- [x] Week 3：合规规则层 + Qwen2.5-0.5B 上板 + 手写 Agent 闭环
-- [ ] Week 4：双模型调度、GPIO 真机动作、全链路联调
-- [ ] Week 5–6：VLA 仿真与端侧可行性评估（可选拓展）
+- [x] 6 类 PPE 视觉训练，test mAP50 0.817
+- [x] RKNN INT8 量化零掉点，NPU 上板与多核调度
+- [x] 合规规则层 + Qwen2.5-0.5B 上板 + 手写 Agent 闭环
+- [ ] 双模型调度、GPIO 真机动作、全链路联调
+- [ ] VLA 仿真与端侧可行性评估（可选拓展）
