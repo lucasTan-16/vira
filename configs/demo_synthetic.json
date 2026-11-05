@@ -1,0 +1,14 @@
+{
+  "kind": "synthetic",
+  "synthetic": {
+    "width": 640,
+    "height": 480,
+    "fps": 30,
+    "pattern": "gradient"
+  },
+  "preprocess": {
+    "target_size": [640, 640],
+    "to_rgb": true,
+    "pad_value": 114
+  }
+}

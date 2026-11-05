@@ -105,21 +105,34 @@ class ToolRegistry:
 import os
 import sys
 import numpy as np
-import cv2
 
-# 让 agent 能 import 板端 board / compliance 模块
+# 让 agent 能 import 板端 board / compliance / capturekit 模块
 
 HERE = os.path.dirname(os.path.abspath(__file__))   # agent/
 ROOT = os.path.dirname(HERE)                       # agent/ 的上一级 = 工程根
 sys.path.insert(0, os.path.join(ROOT, "board"))
 sys.path.insert(0, os.path.join(ROOT, "compliance"))
+sys.path.insert(0, ROOT)
 
 from postprocess import decode_three_head, nms
 from ppe_rules import evaluate as ppe_evaluate
+from capturekit import (                            # 采集统一走抽象层（不再直接用 cv2）
+    CameraConfig,
+    CaptureConfig,
+    CaptureError,
+    FrameReadError,
+    grab_frame,
+)
 
 # 视觉模型与样本图路径
 MODEL = os.path.join(ROOT, "models", "best_rknnopt_int8.rknn")
 SAMPLE = os.path.join(ROOT, "board", "sample_640.npy")
+
+# 摄像头采集参数：分辨率/像素格式/缓冲由抽象层统一下发，工具层不碰硬件细节
+CAMERA_CONFIG = CaptureConfig(
+    kind="camera",
+    camera=CameraConfig(index=0, width=640, height=480, fourcc="MJPG"),
+)
 
 
 class VisionBackend:
@@ -158,30 +171,27 @@ def _make_summary(results, violations):
         f"人员 {p} 缺失 {', '.join(m)}" for p, m in violations)
     return f"现场共 {n} 人，其中 {v} 人违规。{detail}。"
 
-def _letterbox(img, new_shape=(640, 640), color=(114, 114, 114)):
-    """任意尺寸居中缩放补灰边到 640x640。"""
-    h, w = img.shape[:2]
-    r = min(new_shape[0] / h, new_shape[1] / w)
-    nw, nh = int(round(w * r)), int(round(h * r))
-    img = cv2.resize(img, (nw, nh), interpolation=cv2.INTER_LINEAR)
-    top, left = (new_shape[0] - nh) // 2, (new_shape[1] - nw) // 2
-    canvas = np.full((new_shape[0], new_shape[1], 3), color, np.uint8)
-    canvas[top:top + nh, left:left + nw] = img
-    return canvas
-
-
 def _capture_frame(index=0):
-    """从 USB 摄像头采一帧，letterbox 到 640，返回 RGB uint8。"""
-    cap = cv2.VideoCapture(index)
-    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-    ok, frame = cap.read()
-    cap.release()
-    if not ok:
-        raise RuntimeError("camera read failed")
-    frame = _letterbox(frame)
-    return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    """从 USB 摄像头采一帧，返回预处理后的 RGB uint8 (640, 640, 3)。
+
+    采集链路（打开设备 → 下发 MJPG/分辨率 → 读帧 → letterbox → BGR→RGB）
+    全部由 capturekit 抽象层实现；本函数只负责把采集层异常翻译成工具层语义。
+    """
+    config = CAMERA_CONFIG
+    if index != 0:
+        config = CaptureConfig(
+            kind="camera",
+            camera=CameraConfig(index=index, width=640, height=480, fourcc="MJPG"),
+        )
+    try:
+        frame = grab_frame(config)
+    except FrameReadError as exc:
+        raise RuntimeError("camera read failed: %s" % exc) from exc
+    except CaptureError as exc:
+        raise RuntimeError("camera unavailable: %s" % exc) from exc
+    except RuntimeError:
+        raise
+    return frame.image
 
 def run_detection(source="image"):
     """

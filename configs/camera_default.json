@@ -1,0 +1,18 @@
+{
+  "kind": "camera",
+  "camera": {
+    "index": 0,
+    "width": 640,
+    "height": 480,
+    "fourcc": "MJPG",
+    "fps": 30,
+    "buffer_size": 1,
+    "backend": "v4l2",
+    "max_read_failures": 5
+  },
+  "preprocess": {
+    "target_size": [640, 640],
+    "to_rgb": true,
+    "pad_value": 114
+  }
+}

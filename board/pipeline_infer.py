@@ -1,77 +1,139 @@
+#!/usr/bin/env python3
 """板端连续帧率（流水线）验证：NPU 推理与 CPU 后处理并行。
-源线程产帧 → 推理线程(NPU CORE_0) → 后处理线程(decode+NMS)，队列连接。
-稳态吞吐 = max(NPU, 后处理)，应明显高于串行端到端。
-运行：python3 pipeline_infer.py int8|fp16
-"""
-import os, sys, time, threading, queue
-import numpy as np
-from rknnlite.api import RKNNLite
-from postprocess import decode_three_head, nms
 
-# ========== 1. 路径与参数 ==========
+改造后本脚本只负责"造固定帧 + 打印吞吐"，三线程流水线由
+``infer_runtime.PipelineRunner`` 统一实现：
+
+- 源由 ``capturekit`` 合成源提供（同一帧重复，等价于原来的 sample 重复投递），
+  不再手写 ``queue.Queue`` + put 循环；
+- 帧调度默认 ``latest``；``--policy blocking --maxsize 4`` 可复现改造前的阻塞式口径，
+  用于对比"消费慢时采集是否被反压"；
+- 稳态吞吐 = 后处理完成速率（= max(NPU, 后处理)），由 ``post_fps`` 给出。
+
+用法::
+
+    taskset f0 python3 pipeline_infer.py int8
+    taskset f0 python3 pipeline_infer.py int8 --frames 300 --policy blocking
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import os
+import sys
+
+import numpy as np
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-MODE = sys.argv[1] if len(sys.argv) > 1 else "int8"
-MODEL = os.path.join(ROOT, "models", f"best_rknnopt_{MODE}.rknn")
+MODEL_DIR = os.path.join(ROOT, "models")
 SAMPLE = os.path.join(HERE, "sample_640.npy")
-N = 300
+if ROOT not in sys.path:      # 支持 python3 board/pipeline_infer.py 直接运行
+    sys.path.insert(0, ROOT)
 
-# ========== 2. 加载模型（计时前，单核 CORE_0） ==========
-rk = RKNNLite()
-assert rk.load_rknn(MODEL) == 0
-rk.init_runtime(core_mask=RKNNLite.NPU_CORE_0)
-frame = np.load(SAMPLE)[None, ...]
+from capturekit import SyntheticSource
+from infer_runtime import PipelineRunner, VisionRuntime
 
-# ========== 3. 预热：让 NPU 和后处理都热起来 ==========
-for _ in range(10):
-    out = rk.inference(inputs=[frame], data_format="nhwc")
-    nms(decode_three_head(out))
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
+logger = logging.getLogger("pipeline_infer")
 
-# 帧队列：源→推理、推理→后处理（小缓冲，避免积压）
-q_in = queue.Queue(maxsize=4)
-q_out = queue.Queue(maxsize=4)
 
-# ========== 4. 源线程：产帧（模拟摄像头，真实图重复） ==========
-def source():
-    for i in range(N):
-        q_in.put((i, frame))
-    q_in.put(None)                  # 结束标志
+def build_static_source(sample_path: str = SAMPLE, pattern: str = "noise") -> SyntheticSource:
+    """构造"内容恒定"的合成源：每帧都是同一张图，只测吞吐不测画质。
 
-# ========== 5. 推理线程：NPU 推理 ==========
-def infer_worker():
-    while True:
-        item = q_in.get()
-        if item is None:
-            q_out.put(None)
-            break
-        idx, f = item
-        out = rk.inference(inputs=[f], data_format="nhwc")
-        q_out.put((idx, out))
+    ``sample_640.npy`` 为 640x640x3 RGB；合成源约定输入 BGR，故先转 BGR，
+    预处理层再转回 RGB，最终送入 NPU 的张量与改造前完全一致。
+    """
+    if os.path.exists(sample_path):
+        image = np.load(sample_path)
+        if image.ndim != 3 or image.shape[2] != 3:
+            raise ValueError(f"unexpected sample shape: {image.shape}")
+        frame_bgr = image[..., ::-1].copy()          # RGB -> BGR
+        height, width = frame_bgr.shape[:2]
 
-# ========== 6. 后处理线程：decode + NMS ==========
-def post_worker():
-    c = 0
-    while True:
-        item = q_out.get()
-        if item is None:
-            return c
-        idx, out = item
-        nms(decode_three_head(out))
-        c += 1
+        def factory(seq: int, shape: tuple[int, int]) -> np.ndarray:
+            return frame_bgr
 
-# ========== 7. 启动流水线，测墙钟 ==========
-t_source = threading.Thread(target=source)
-t_infer = threading.Thread(target=infer_worker)
-t_post = threading.Thread(target=post_worker)
+        logger.info("固定样本源: %s (%dx%d)", os.path.basename(sample_path), width, height)
+        return SyntheticSource(width=width, height=height, fps=0, frame_factory=factory)
 
-t0 = time.perf_counter()
-for t in (t_source, t_infer, t_post):
-    t.start()
-t_post.join()                       # 后处理结束 = 所有帧处理完
-wall = time.perf_counter() - t0
-t_source.join(); t_infer.join()
+    logger.warning("样本 %s 不存在，退回合成图案 pattern=%s", sample_path, pattern)
+    return SyntheticSource(width=640, height=480, fps=0, pattern=pattern)
 
-print("模式 %s, 流水线 %d 帧" % (MODE, N))
-print("并行墙钟: %.3f s" % wall)
-print("连续吞吐: %.1f FPS (%.3f ms/帧)" % (N / wall, wall / N * 1000))
-rk.release()
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="VIRA 板端连续吞吐验证（NPU + 后处理并行）",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument("mode", nargs="?", default="int8", choices=["int8", "fp16"])
+    parser.add_argument("--model", default=None, help="直接指定 rknn 模型路径")
+    parser.add_argument("--sample", default=SAMPLE, help="固定样本 npy 路径")
+    parser.add_argument("--frames", type=int, default=300, help="处理帧数上限")
+    parser.add_argument("--duration", type=float, default=0.0, help="最长运行秒数（>0 生效）")
+    parser.add_argument("--policy", default="latest", choices=["latest", "blocking"],
+                        help="帧调度策略：latest=最新帧优先，blocking=改造前基线")
+    parser.add_argument("--maxsize", type=int, default=4, help="blocking 队列长度")
+    parser.add_argument("--warmup", type=int, default=10, help="预热轮数")
+    parser.add_argument("--json", action="store_true", help="以 JSON 输出统计结果")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    model_path = args.model or os.path.join(MODEL_DIR, f"best_rknnopt_{args.mode}.rknn")
+
+    runtime = VisionRuntime(model_path)
+    try:
+        runtime.load()
+    except RuntimeError as exc:
+        print(f"推理后端不可用: {exc}", file=sys.stderr)
+        return 3
+
+    try:
+        source = build_static_source(args.sample)
+        if args.warmup > 0:
+            logger.info("预热 %d 轮 ...", args.warmup)
+            with SyntheticSource(width=640, height=480, fps=0, total=1) as warm:
+                frame = warm.read()
+            if frame is not None:
+                runtime.warmup([frame], rounds=args.warmup)
+
+        runner = PipelineRunner(
+            source=source,
+            detector=runtime,
+            policy=args.policy,
+            maxsize=args.maxsize,
+        )
+        report = runner.run(
+            max_frames=args.frames,
+            duration=args.duration if args.duration > 0 else None,
+        )
+    finally:
+        runtime.release()
+
+    if args.json:
+        print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        fps = report.post_fps
+        ms = (1000.0 / fps) if fps > 0 else float("inf")
+        print("=" * 62)
+        print(f"模式 {args.mode}，流水线 {report.frames_postprocessed} 帧")
+        print(f"并行墙钟: {report.wall_s:.3f} s")
+        print(f"连续吞吐: {fps:.1f} FPS ({ms:.3f} ms/帧)")
+        print(report.format_text())
+        print("=" * 62)
+
+    if runner.error is not None:
+        print(f"流水线异常终止: {runner.error!r}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
