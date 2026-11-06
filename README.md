@@ -65,11 +65,13 @@ USB 摄像头 (UVC, MJPG 640x480)
 
 | 指标 | 数值 |
 |---|---|
-| decode 速度 | **24.2 tok/s**（未锁频口径，457 token 端到端） |
-| 首 token 延迟 TTFT | 192 ms（未锁频口径，42 token prefill） |
-| 峰值内存 | **660.3 MiB**（VmHWM 中位；模型文件 756.8 MiB / 793.6 MB） |
+| decode 速度 | **39.15 tok/s**（锁频口径，gen_tokens=45，488 token prefill） |
+| 首 token 延迟 TTFT | **750.7 ms**（锁频口径，488 token prefill；强依赖 prefill 长度，不单独引用） |
+| 峰值内存 | **671.8 MiB**（VmHWM 中位；模型文件 756.8 MiB / 793.6 MB） |
 
-> 语言模型侧**尚未锁频**（待复测）：DDR 常驻 528 MHz 最低档、CPU/NPU 走 ondemand。本表为未锁频原始实测（457 token 端到端）；历史另一组未锁频记录为 **25.3 tok/s、TTFT 120 ms**（493 token、另一提示词包），与本表测量条件不同，材料侧统一引用后者。**LLM 数字不得与上文视觉锁频数字并称为同口径**，锁频复测完成后统一。
+> 本表与上文视觉表**同属锁频口径**（DDR 2112 MHz / NPU 1 GHz / CPU performance），n=3 取中位，跑完已恢复 ondemand。
+> FP16 对照：**24.66 tok/s / 1139.9 MiB**；W8A8 相对 FP16 decode +58.8%、内存 −468.1 MiB（−41.1%）。
+> 作废（未锁频或口径记录错误）：25.3 tok/s、24.2 tok/s、TTFT 120 ms / 192 ms、660.3 MiB、16.61 tok/s / 1128.9 MiB。
 > 早期另有一组记录为 683.7 MB（模型文件按 MB 记为 757），与本行相差 1.3%，系单位与采样口径不同，不再引用。
 
 **合规规则层 / 系统**
